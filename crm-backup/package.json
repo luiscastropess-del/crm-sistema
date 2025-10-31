@@ -1,0 +1,50 @@
+{
+  "name": "crm-firebase",
+  "version": "1.0.0",
+  "description": "Sistema CRM completo com Next.js e Firebase",
+  "author": "Luis Santos - LUISCASTROPESS@GMAIL.COM",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/luiscastropess-del/crm-sistema.git"
+  },
+  "keywords": [
+    "crm",
+    "firebase",
+    "nextjs",
+    "react",
+    "tailwindcss",
+    "customer-relationship-management"
+  ],
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "firebase": "^10.14.1",
+    "firebase-admin": "^12.7.0",
+    "jsonwebtoken": "^9.0.2",
+    "next": "^14.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/react": "19.2.2",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^8.54.0",
+    "eslint-config-next": "^14.0.0",
+    "postcss": "^8.4.31",
+    "tailwindcss": "^3.3.5"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

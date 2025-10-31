@@ -1,0 +1,47 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { connectDB } from '@/lib/mongodb'
+import Atividade from '@/models/Atividade'
+import { withAuth } from '@/lib/middleware/auth'
+
+// GET - Buscar atividades recentes
+export async function GET(request: NextRequest) {
+  return withAuth(request, async (req, user) => {
+    try {
+      await connectDB()
+
+      const { searchParams } = new URL(request.url)
+      const limit = parseInt(searchParams.get('limit') || '5')
+
+      // Filtros
+      const filtros: any = {}
+
+      // Se não for admin, mostrar apenas atividades do usuário
+      if (user.role !== 'admin') {
+        filtros.usuario = user._id
+      }
+
+      // Buscar atividades recentes
+      const atividades = await Atividade.find(filtros)
+        .populate('cliente', 'nome email')
+        .populate('venda', 'titulo')
+        .populate('usuario', 'nome email')
+        .sort({ createdAt: -1 })
+        .limit(limit)
+
+      return NextResponse.json({
+        success: true,
+        data: atividades,
+      })
+
+    } catch (error: any) {
+      console.error('❌ Erro ao buscar atividades recentes:', error)
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Erro ao buscar atividades recentes' 
+        },
+        { status: 500 }
+      )
+    }
+  })
+}

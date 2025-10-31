@@ -1,0 +1,128 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { connectDB } from '@/lib/mongodb'
+import Venda from '@/models/Venda'
+import { withAuth } from '@/lib/middleware/auth'
+
+// GET - Listar vendas
+export async function GET(request: NextRequest) {
+  return withAuth(request, async (req, user) => {
+    try {
+      await connectDB()
+
+      const { searchParams } = new URL(request.url)
+      const page = parseInt(searchParams.get('page') || '1')
+      const limit = parseInt(searchParams.get('limit') || '10')
+      const status = searchParams.get('status')
+      const clienteId = searchParams.get('clienteId')
+
+      // Filtros
+      const filtros: any = {}
+
+      if (status) {
+        filtros.status = status
+      }
+
+      if (clienteId) {
+        filtros.cliente = clienteId
+      }
+
+      // Se não for admin, mostrar apenas vendas do usuário
+      if (user.role !== 'admin') {
+        filtros.responsavel = user._id
+      }
+
+      // Buscar vendas
+      const vendas = await Venda.find(filtros)
+        .populate('cliente', 'nome email empresa')
+        .populate('responsavel', 'nome email')
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .skip((page - 1) * limit)
+
+      const total = await Venda.countDocuments(filtros)
+
+      // Calcular estatísticas
+      const stats = await Venda.aggregate([
+        { $match: filtros },
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+            totalValor: { $sum: '$valor' },
+          },
+        },
+      ])
+
+      return NextResponse.json({
+        success: true,
+        data: vendas,
+        stats,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      })
+
+    } catch (error: any) {
+      console.error('❌ Erro ao buscar vendas:', error)
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Erro ao buscar vendas' 
+        },
+        { status: 500 }
+      )
+    }
+  })
+}
+
+// POST - Criar venda
+export async function POST(request: NextRequest) {
+  return withAuth(request, async (req, user) => {
+    try {
+      await connectDB()
+
+      const body = await request.json()
+
+      // Validação
+      if (!body.titulo || !body.cliente || !body.valor) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'Título, cliente e valor são obrigatórios' 
+          },
+          { status: 400 }
+        )
+      }
+
+      // Criar venda
+      const novaVenda = await Venda.create({
+        ...body,
+        responsavel: user._id,
+      })
+
+      const vendaPopulada = await Venda.findById(novaVenda._id)
+        .populate('cliente', 'nome email empresa')
+        .populate('responsavel', 'nome email')
+
+      return NextResponse.json({
+        success: true,
+        message: 'Venda criada com sucesso',
+        data: vendaPopulada,
+      }, { status: 201 })
+
+    } catch (error: any) {
+      console.error('❌ Erro ao criar venda:', error)
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Erro ao criar venda',
+          details: error.message 
+        },
+        { status: 500 }
+      )
+    }
+  })
+}

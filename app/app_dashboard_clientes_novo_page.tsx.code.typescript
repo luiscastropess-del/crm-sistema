@@ -1,0 +1,294 @@
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
+import { api } from '@/lib/api/client'
+import { ArrowLeft } from 'lucide-react'
+
+export default function NovoClientePage() {
+  const router = useRouter()
+  const [isLoading, setIsLoading] = useState(false)
+  const [errors, setErrors] = useState<any>({})
+  const [formData, setFormData] = useState({
+    nome: '',
+    email: '',
+    telefone: '',
+    empresa: '',
+    cargo: '',
+    status: 'lead',
+    origem: 'website',
+    valorPotencial: '',
+    endereco: {
+      rua: '',
+      cidade: '',
+      estado: '',
+      cep: '',
+    },
+    observacoes: '',
+    tags: '',
+  })
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target
+
+    if (name.startsWith('endereco.')) {
+      const field = name.split('.')[1]
+      setFormData({
+        ...formData,
+        endereco: {
+          ...formData.endereco,
+          [field]: value,
+        },
+      })
+    } else {
+      setFormData({
+        ...formData,
+        [name]: value,
+      })
+    }
+
+    setErrors({ ...errors, [name]: '' })
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    setErrors({})
+
+    try {
+      const data = {
+        ...formData,
+        valorPotencial: formData.valorPotencial ? parseFloat(formData.valorPotencial) : undefined,
+        tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : [],
+      }
+
+      const response = await api.clientes.criar(data)
+
+      if (response.data.success) {
+        router.push('/dashboard/clientes')
+      }
+    } catch (error: any) {
+      setErrors({ 
+        submit: error.response?.data?.error || 'Erro ao criar cliente' 
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <Link
+          href="/dashboard/clientes"
+          className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-4"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Voltar para Clientes
+        </Link>
+        <h1 className="text-3xl font-bold text-gray-900">Novo Cliente</h1>
+        <p className="text-gray-600 mt-1">
+          Preencha os dados do novo cliente
+        </p>
+      </div>
+
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="max-w-4xl">
+        {errors.submit && (
+          <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200">
+            <p className="text-sm text-red-600">{errors.submit}</p>
+          </div>
+        )}
+
+        {/* Informações Básicas */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Informações Básicas</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Nome Completo"
+                name="nome"
+                value={formData.nome}
+                onChange={handleChange}
+                required
+                placeholder="João Silva"
+                error={errors.nome}
+              />
+              <Input
+                label="Email"
+                name="email"
+                type="email"
+                value={formData.email}
+                onChange={handleChange}
+                required
+                placeholder="joao@email.com"
+                error={errors.email}
+              />
+              <Input
+                label="Telefone"
+                name="telefone"
+                value={formData.telefone}
+                onChange={handleChange}
+                placeholder="(11) 99999-9999"
+              />
+              <Input
+                label="Empresa"
+                name="empresa"
+                value={formData.empresa}
+                onChange={handleChange}
+                placeholder="Empresa LTDA"
+              />
+              <Input
+                label="Cargo"
+                name="cargo"
+                value={formData.cargo}
+                onChange={handleChange}
+                placeholder="Gerente"
+              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Status
+                </label>
+                <select
+                  name="status"
+                  value={formData.status}
+                  onChange={handleChange}
+                  className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="lead">Lead</option>
+                  <option value="prospect">Prospect</option>
+                  <option value="cliente">Cliente</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Origem
+                </label>
+                <select
+                  name="origem"
+                  value={formData.origem}
+                  onChange={handleChange}
+                  className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="website">Website</option>
+                  <option value="indicacao">Indicação</option>
+                  <option value="redes_sociais">Redes Sociais</option>
+                  <option value="evento">Evento</option>
+                  <option value="outro">Outro</option>
+                </select>
+              </div>
+              <Input
+                label="Valor Potencial"
+                name="valorPotencial"
+                type="number"
+                value={formData.valorPotencial}
+                onChange={handleChange}
+                placeholder="0.00"
+                helperText="Valor estimado de negócio"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Endereço */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Endereço</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <Input
+                  label="Rua"
+                  name="endereco.rua"
+                  value={formData.endereco.rua}
+                  onChange={handleChange}
+                  placeholder="Rua, número, complemento"
+                />
+              </div>
+              <Input
+                label="Cidade"
+                name="endereco.cidade"
+                value={formData.endereco.cidade}
+                onChange={handleChange}
+                placeholder="São Paulo"
+              />
+              <Input
+                label="Estado"
+                name="endereco.estado"
+                value={formData.endereco.estado}
+                onChange={handleChange}
+                placeholder="SP"
+              />
+              <Input
+                label="CEP"
+                name="endereco.cep"
+                value={formData.endereco.cep}
+                onChange={handleChange}
+                placeholder="00000-000"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Informações Adicionais */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Informações Adicionais</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Tags
+              </label>
+              <input
+                name="tags"
+                value={formData.tags}
+                onChange={handleChange}
+                placeholder="vip, premium, urgente (separadas por vírgula)"
+                className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="mt-1 text-sm text-gray-500">
+                Separe as tags por vírgula
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Observações
+              </label>
+              <textarea
+                name="observacoes"
+                value={formData.observacoes}
+                onChange={handleChange}
+                rows={4}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Informações adicionais sobre o cliente..."
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Actions */}
+        <div className="flex justify-end space-x-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => router.back()}
+          >
+            Cancelar
+          </Button>
+          <Button type="submit" isLoading={isLoading}>
+            Criar Cliente
+          </Button>
+        </div>
+      </form>
+    </div>
+  )
+}

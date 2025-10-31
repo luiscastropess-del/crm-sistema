@@ -1,0 +1,169 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { connectDB } from '@/lib/mongodb'
+import Cliente from '@/models/Cliente'
+import { withAuth } from '@/lib/middleware/auth'
+
+// GET - Buscar cliente por ID
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  return withAuth(request, async (req, user) => {
+    try {
+      await connectDB()
+
+      const cliente = await Cliente.findById(params.id)
+        .populate('responsavel', 'nome email avatar')
+
+      if (!cliente) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'Cliente não encontrado' 
+          },
+          { status: 404 }
+        )
+      }
+
+      // Verificar permissão
+      if (user.role !== 'admin' && cliente.responsavel._id.toString() !== user._id) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'Sem permissão para acessar este cliente' 
+          },
+          { status: 403 }
+        )
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: cliente,
+      })
+
+    } catch (error: any) {
+      console.error('❌ Erro ao buscar cliente:', error)
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Erro ao buscar cliente' 
+        },
+        { status: 500 }
+      )
+    }
+  })
+}
+
+// PUT - Atualizar cliente
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  return withAuth(request, async (req, user) => {
+    try {
+      await connectDB()
+
+      const body = await request.json()
+
+      const cliente = await Cliente.findById(params.id)
+
+      if (!cliente) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'Cliente não encontrado' 
+          },
+          { status: 404 }
+        )
+      }
+
+      // Verificar permissão
+      if (user.role !== 'admin' && cliente.responsavel.toString() !== user._id) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'Sem permissão para editar este cliente' 
+          },
+          { status: 403 }
+        )
+      }
+
+      // Atualizar
+      const clienteAtualizado = await Cliente.findByIdAndUpdate(
+        params.id,
+        body,
+        { new: true, runValidators: true }
+      ).populate('responsavel', 'nome email')
+
+      return NextResponse.json({
+        success: true,
+        message: 'Cliente atualizado com sucesso',
+        data: clienteAtualizado,
+      })
+
+    } catch (error: any) {
+      console.error('❌ Erro ao atualizar cliente:', error)
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Erro ao atualizar cliente' 
+        },
+        { status: 500 }
+      )
+    }
+  })
+}
+
+// DELETE - Deletar cliente (soft delete)
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  return withAuth(request, async (req, user) => {
+    try {
+      await connectDB()
+
+      const cliente = await Cliente.findById(params.id)
+
+      if (!cliente) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'Cliente não encontrado' 
+          },
+          { status: 404 }
+        )
+      }
+
+      // Verificar permissão
+      if (user.role !== 'admin' && cliente.responsavel.toString() !== user._id) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'Sem permissão para deletar este cliente' 
+          },
+          { status: 403 }
+        )
+      }
+
+      // Soft delete
+      cliente.ativo = false
+      await cliente.save()
+
+      return NextResponse.json({
+        success: true,
+        message: 'Cliente deletado com sucesso',
+      })
+
+    } catch (error: any) {
+      console.error('❌ Erro ao deletar cliente:', error)
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Erro ao deletar cliente' 
+        },
+        { status: 500 }
+      )
+    }
+  })
+}

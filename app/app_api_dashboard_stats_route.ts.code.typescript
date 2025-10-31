@@ -1,0 +1,136 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { connectDB } from '@/lib/mongodb'
+import Cliente from '@/models/Cliente'
+import Venda from '@/models/Venda'
+import Atividade from '@/models/Atividade'
+import { withAuth } from '@/lib/middleware/auth'
+
+export async function GET(request: NextRequest) {
+  return withAuth(request, async (req, user) => {
+    try {
+      await connectDB()
+
+      const filtros: any = {}
+
+      // Se não for admin, filtrar por usuário
+      if (user.role !== 'admin') {
+        filtros.responsavel = user._id
+      }
+
+      // Total de clientes
+      const totalClientes = await Cliente.countDocuments({
+        ...filtros,
+        ativo: true,
+      })
+
+      // Total de vendas no mês
+      const inicioMes = new Date()
+      inicioMes.setDate(1)
+      inicioMes.setHours(0, 0, 0, 0)
+
+      const vendasMes = await Venda.countDocuments({
+        ...filtros,
+        createdAt: { $gte: inicioMes },
+      })
+
+      // Receita do mês
+      const receitaResult = await Venda.aggregate([
+        {
+          $match: {
+            ...filtros,
+            status: 'fechada',
+            dataFechamento: { $gte: inicioMes },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$valor' },
+          },
+        },
+      ])
+
+      const receitaMes = receitaResult.length > 0 ? receitaResult[0].total : 0
+
+      // Taxa de conversão
+      const totalLeads = await Cliente.countDocuments({
+        ...filtros,
+        status: 'lead',
+      })
+
+      const totalClientesConvertidos = await Cliente.countDocuments({
+        ...filtros,
+        status: 'cliente',
+      })
+
+      const taxaConversao = totalLeads > 0 
+        ? ((totalClientesConvertidos / totalLeads) * 100).toFixed(1)
+        : 0
+
+      // Atividades pendentes
+      const atividadesPendentes = await Atividade.countDocuments({
+        usuario: user._id,
+        status: 'pendente',
+      })
+
+      // Pipeline de vendas
+      const pipeline = await Venda.aggregate([
+        { $match: filtros },
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+            valor: { $sum: '$valor' },
+          },
+        },
+      ])
+
+      // Vendas por mês (últimos 6 meses)
+      const seisMesesAtras = new Date()
+      seisMesesAtras.setMonth(seisMesesAtras.getMonth() - 6)
+
+      const vendasPorMes = await Venda.aggregate([
+        {
+          $match: {
+            ...filtros,
+            createdAt: { $gte: seisMesesAtras },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$createdAt' },
+              month: { $month: '$createdAt' },
+            },
+            count: { $sum: 1 },
+            valor: { $sum: '$valor' },
+          },
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1 } },
+      ])
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          totalClientes,
+          vendasMes,
+          receitaMes,
+          taxaConversao: parseFloat(taxaConversao as string),
+          atividadesPendentes,
+          pipeline,
+          vendasPorMes,
+        },
+      })
+
+    } catch (error: any) {
+      console.error('❌ Erro ao buscar estatísticas:', error)
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Erro ao buscar estatísticas' 
+        },
+        { status: 500 }
+      )
+    }
+  })
+}

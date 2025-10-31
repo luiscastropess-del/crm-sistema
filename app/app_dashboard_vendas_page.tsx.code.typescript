@@ -1,0 +1,255 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
+import { api } from '@/lib/api/client'
+import { 
+  Plus, 
+  Search, 
+  Filter,
+  DollarSign,
+  TrendingUp,
+  Clock,
+  CheckCircle,
+  XCircle,
+} from 'lucide-react'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+
+export default function VendasPage() {
+  const [vendas, setVendas] = useState<any[]>([])
+  const [stats, setStats] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState('todos')
+
+  useEffect(() => {
+    loadVendas()
+  }, [statusFilter])
+
+  const loadVendas = async () => {
+    try {
+      setLoading(true)
+      const params: any = {}
+      
+      if (statusFilter !== 'todos') params.status = statusFilter
+
+      const response = await api.vendas.listar(params)
+      
+      if (response.data.success) {
+        setVendas(response.data.data)
+        setStats(response.data.stats || [])
+      }
+    } catch (error) {
+      console.error('Erro ao carregar vendas:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const statusConfig: any = {
+    prospeccao: {
+      label: 'Prospecção',
+      color: 'bg-blue-100 text-blue-700',
+      icon: Clock,
+    },
+    negociacao: {
+      label: 'Negociação',
+      color: 'bg-yellow-100 text-yellow-700',
+      icon: TrendingUp,
+    },
+    proposta: {
+      label: 'Proposta',
+      color: 'bg-purple-100 text-purple-700',
+      icon: DollarSign,
+    },
+    fechada: {
+      label: 'Fechada',
+      color: 'bg-green-100 text-green-700',
+      icon: CheckCircle,
+    },
+    perdida: {
+      label: 'Perdida',
+      color: 'bg-red-100 text-red-700',
+      icon: XCircle,
+    },
+  }
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(value)
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Vendas</h1>
+          <p className="text-gray-600 mt-1">
+            Gerencie seu pipeline de vendas
+          </p>
+        </div>
+        <Link href="/dashboard/vendas/nova">
+          <Button>
+            <Plus className="h-4 w-4 mr-2" />
+            Nova Venda
+          </Button>
+        </Link>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {stats.map((stat: any, index: number) => {
+          const config = statusConfig[stat._id] || {}
+          const Icon = config.icon || DollarSign
+          
+          return (
+            <Card key={index} className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">
+                    {config.label || stat._id}
+                  </p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {stat.count}
+                  </p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {formatCurrency(stat.totalValor)}
+                  </p>
+                </div>
+                <div className={`h-12 w-12 rounded-lg flex items-center justify-center ${config.color}`}>
+                  <Icon className="h-6 w-6" />
+                </div>
+              </div>
+            </Card>
+          )
+        })}
+      </div>
+
+      {/* Filters */}
+      <Card className="p-4">
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex-1">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar vendas..."
+                className="h-10 w-full rounded-lg border border-gray-300 bg-white pl-10 pr-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-10 rounded-lg border border-gray-300 bg-white px-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="todos">Todos os Status</option>
+              <option value="prospeccao">Prospecção</option>
+              <option value="negociacao">Negociação</option>
+              <option value="proposta">Proposta</option>
+              <option value="fechada">Fechada</option>
+              <option value="perdida">Perdida</option>
+            </select>
+            <Button variant="outline" size="icon">
+              <Filter className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {/* Lista de Vendas */}
+      {loading ? (
+        <div className="text-center py-12">
+          <p className="text-gray-500">Carregando vendas...</p>
+        </div>
+      ) : vendas.length === 0 ? (
+        <Card className="p-12 text-center">
+          <p className="text-gray-500 mb-4">Nenhuma venda encontrada</p>
+          <Link href="/dashboard/vendas/nova">
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              Criar Primeira Venda
+            </Button>
+          </Link>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {vendas.map((venda) => {
+            const config = statusConfig[venda.status]
+            const Icon = config.icon
+
+            return (
+              <Card key={venda._id} className="p-6 hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-2">
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        {venda.titulo}
+                      </h3>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
+                        <Icon className="h-3 w-3 mr-1" />
+                        {config.label}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <p className="text-gray-500">Cliente</p>
+                        <p className="font-medium text-gray-900">
+                          {venda.cliente?.nome || 'N/A'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Valor</p>
+                        <p className="font-medium text-gray-900">
+                          {formatCurrency(venda.valor)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Probabilidade</p>
+                        <p className="font-medium text-gray-900">
+                          {venda.probabilidade}%
+                        </p>
+                      </div>
+                    </div>
+
+                    {venda.descricao && (
+                      <p className="text-sm text-gray-600 mt-3">
+                        {venda.descricao}
+                      </p>
+                    )}
+
+                    <div className="flex items-center space-x-4 mt-4 text-xs text-gray-500">
+                      <span>
+                        Criado em {format(new Date(venda.createdAt), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                      </span>
+                      {venda.dataFechamento && (
+                        <span>
+                          Fechamento previsto: {format(new Date(venda.dataFechamento), "dd/MM/yyyy")}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 ml-4">
+                    <Link href={`/dashboard/vendas/${venda._id}`}>
+                      <Button variant="outline" size="sm">
+                        Ver Detalhes
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              </Card>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
