@@ -1,98 +1,72 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { connectDB } from '@/lib/mongodb'
-import User from '@/models/User'
-import { generateTokenPair } from '@/lib/auth/jwt'
+// app/api/auth/login/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
+import { connectDB } from '@/lib/db/mongodb';
+import User from '@/lib/db/models/User';
+import { gerarTokens } from '@/lib/auth/jwt';
+import { validar, loginSchema } from '@/lib/utils/validation';
+import { sucesso, erro, erroValidacao } from '@/lib/utils/response';
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { email, senha } = body
+    // Pegar dados do body
+    const body = await request.json();
 
-    // Validação
-    if (!email || !senha) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Email e senha são obrigatórios' 
-        },
-        { status: 400 }
-      )
+    // Validar dados
+    const validacao = validar(loginSchema, body);
+    if (!validacao.sucesso) {
+      return erroValidacao(validacao.erros);
     }
+
+    const { email, senha } = validacao.dados;
 
     // Conectar ao banco
-    await connectDB()
+    await connectDB();
 
-    // Buscar usuário (incluindo senha)
-    const usuario = await User.findOne({ email }).select('+senha')
-
+    // Buscar usuário
+    const usuario = await User.findOne({ email });
     if (!usuario) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Credenciais inválidas' 
-        },
-        { status: 401 }
-      )
+      return erro('Email ou senha inválidos', 401);
     }
 
-    // Verificar se usuário está ativo
+    // Verificar se está ativo
     if (!usuario.ativo) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Usuário inativo' 
-        },
-        { status: 403 }
-      )
+      return erro('Usuário inativo', 403);
     }
 
-    // Comparar senha
-    const senhaCorreta = await usuario.compararSenha(senha)
-
-    if (!senhaCorreta) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Credenciais inválidas' 
-        },
-        { status: 401 }
-      )
+    // Verificar senha
+    const senhaValida = await bcrypt.compare(senha, usuario.senha);
+    if (!senhaValida) {
+      return erro('Email ou senha inválidos', 401);
     }
-
-    // Atualizar último acesso
-    usuario.ultimoAcesso = new Date()
-    await usuario.save()
 
     // Gerar tokens
-    const tokens = generateTokenPair({
-      userId: usuario._id.toString(),
-      email: usuario.email,
-      role: usuario.role,
-    })
+    const { accessToken, refreshToken } = gerarTokens(
+      usuario._id.toString(),
+      usuario.email
+    );
 
-    return NextResponse.json({
-      success: true,
-      message: 'Login realizado com sucesso',
-      user: {
-        id: usuario._id,
+    // Salvar refresh token e último acesso
+    usuario.refreshToken = refreshToken;
+    usuario.ultimoAcesso = new Date();
+    await usuario.save();
+
+    // Retornar resposta
+    return sucesso({
+      accessToken,
+      refreshToken,
+      usuario: {
+        id: usuario._id.toString(),
         nome: usuario.nome,
         email: usuario.email,
-        role: usuario.role,
         avatar: usuario.avatar,
+        empresa: usuario.empresa,
+        cargo: usuario.cargo,
+        telefone: usuario.telefone,
       },
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-    })
-
+    }, 'Login realizado com sucesso');
   } catch (error: any) {
-    console.error('❌ Erro no login:', error)
-    return NextResponse.json(
-      { 
-        success: false,
-        error: 'Erro ao fazer login',
-        details: error.message 
-      },
-      { status: 500 }
-    )
+    console.error('❌ Erro ao fazer login:', error);
+    return erro('Erro ao fazer login', 500);
   }
 }

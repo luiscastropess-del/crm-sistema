@@ -127,7 +127,7 @@ Crie um endpoint temporário em `app/api/seed/route.ts`:
 
 ```typescript
 import { NextResponse } from 'next/server'
-import { connectDB } from '@/lib/mongodb'
+import { connectDB } from '@/lib/db/mongodb';
 // Import seed logic here
 
 export async function GET() {

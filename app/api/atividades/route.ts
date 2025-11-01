@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db/mongodb';
-import Venda from '@/lib/db/models/Venda'
+import Atividade from '@/lib/db/models/Atividade'
 import { withAuth } from '@/lib/middleware/auth'
 
-// GET - Listar vendas
+// GET - Listar atividades
 export async function GET(request: NextRequest) {
   return withAuth(request, async (req, user) => {
     try {
@@ -13,7 +13,9 @@ export async function GET(request: NextRequest) {
       const page = parseInt(searchParams.get('page') || '1')
       const limit = parseInt(searchParams.get('limit') || '10')
       const status = searchParams.get('status')
+      const tipo = searchParams.get('tipo')
       const clienteId = searchParams.get('clienteId')
+      const vendaId = searchParams.get('vendaId')
 
       // Filtros
       const filtros: any = {}
@@ -22,41 +24,37 @@ export async function GET(request: NextRequest) {
         filtros.status = status
       }
 
+      if (tipo) {
+        filtros.tipo = tipo
+      }
+
       if (clienteId) {
         filtros.cliente = clienteId
       }
 
-      // Se não for admin, mostrar apenas vendas do usuário
-      if (user.role !== 'admin') {
-        filtros.responsavel = user._id
+      if (vendaId) {
+        filtros.venda = vendaId
       }
 
-      // Buscar vendas
-      const vendas = await Venda.find(filtros)
-        .populate('cliente', 'nome email empresa')
-        .populate('responsavel', 'nome email')
-        .sort({ createdAt: -1 })
+      // Se não for admin, mostrar apenas atividades do usuário
+      if (user.role !== 'admin') {
+        filtros.usuario = user._id
+      }
+
+      // Buscar atividades
+      const atividades = await Atividade.find(filtros)
+        .populate('cliente', 'nome email')
+        .populate('venda', 'titulo valor')
+        .populate('usuario', 'nome email')
+        .sort({ dataAgendada: -1, createdAt: -1 })
         .limit(limit)
         .skip((page - 1) * limit)
 
-      const total = await Venda.countDocuments(filtros)
-
-      // Calcular estatísticas
-      const stats = await Venda.aggregate([
-        { $match: filtros },
-        {
-          $group: {
-            _id: '$status',
-            count: { $sum: 1 },
-            totalValor: { $sum: '$valor' },
-          },
-        },
-      ])
+      const total = await Atividade.countDocuments(filtros)
 
       return NextResponse.json({
         success: true,
-        data: vendas,
-        stats,
+        data: atividades,
         pagination: {
           page,
           limit,
@@ -66,11 +64,11 @@ export async function GET(request: NextRequest) {
       })
 
     } catch (error: any) {
-      console.error('❌ Erro ao buscar vendas:', error)
+      console.error('❌ Erro ao buscar atividades:', error)
       return NextResponse.json(
         {
           success: false,
-          error: 'Erro ao buscar vendas'
+          error: 'Erro ao buscar atividades'
         },
         { status: 500 }
       )
@@ -78,7 +76,7 @@ export async function GET(request: NextRequest) {
   })
 }
 
-// POST - Criar venda
+// POST - Criar atividade
 export async function POST(request: NextRequest) {
   return withAuth(request, async (req, user) => {
     try {
@@ -87,38 +85,39 @@ export async function POST(request: NextRequest) {
       const body = await request.json()
 
       // Validação
-      if (!body.titulo || !body.cliente || !body.valor) {
+      if (!body.tipo || !body.titulo) {
         return NextResponse.json(
           {
             success: false,
-            error: 'Título, cliente e valor são obrigatórios'
+            error: 'Tipo e título são obrigatórios'
           },
           { status: 400 }
         )
       }
 
-      // Criar venda
-      const novaVenda = await Venda.create({
+      // Criar atividade
+      const novaAtividade = await Atividade.create({
         ...body,
-        responsavel: user._id,
+        usuario: user._id,
       })
 
-      const vendaPopulada = await Venda.findById(novaVenda._id)
-        .populate('cliente', 'nome email empresa')
-        .populate('responsavel', 'nome email')
+      const atividadePopulada = await Atividade.findById(novaAtividade._id)
+        .populate('cliente', 'nome email')
+        .populate('venda', 'titulo valor')
+        .populate('usuario', 'nome email')
 
       return NextResponse.json({
         success: true,
-        message: 'Venda criada com sucesso',
-        data: vendaPopulada,
+        message: 'Atividade criada com sucesso',
+        data: atividadePopulada,
       }, { status: 201 })
 
     } catch (error: any) {
-      console.error('❌ Erro ao criar venda:', error)
+      console.error('❌ Erro ao criar atividade:', error)
       return NextResponse.json(
         {
           success: false,
-          error: 'Erro ao criar venda',
+          error: 'Erro ao criar atividade',
           details: error.message
         },
         { status: 500 }

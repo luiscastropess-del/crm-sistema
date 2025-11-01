@@ -1,104 +1,57 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { verifyAccessToken, extractTokenFromHeader, JWTPayload } from '@/lib/auth/jwt'
-import { connectDB } from '@/lib/mongodb'
-import User from '@/models/User'
+// lib/middleware/auth.ts
+import { NextRequest } from 'next/server';
+import { connectDB } from '@/lib/db/mongodb';
+import User from '@/lib/db/models/User';
+import { verificarAccessToken } from '@/lib/auth/jwt';
 
-export interface AuthRequest extends NextRequest {
-  user?: JWTPayload & {
-    _id: string
-  }
-}
-
-/**
- * Middleware para proteger rotas de API
- */
-export async function withAuth(
-  request: NextRequest,
-  handler: (request: AuthRequest, user: any) => Promise<NextResponse>
-) {
+export async function verificarAutenticacao(request: NextRequest) {
   try {
-    // Extrair token
-    const authHeader = request.headers.get('Authorization')
-    const token = extractTokenFromHeader(authHeader)
-
-    if (!token) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Token não fornecido' 
-        },
-        { status: 401 }
-      )
+    // Pegar token do header
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return { error: 'Token não fornecido', status: 401 };
     }
+
+    const token = authHeader.substring(7);
 
     // Verificar token
-    const payload = verifyAccessToken(token)
-
-    if (!payload) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Token inválido ou expirado' 
-        },
-        { status: 401 }
-      )
+    let decoded;
+    try {
+      decoded = verificarAccessToken(token);
+    } catch (error: any) {
+      return { error: error.message, status: 401 };
     }
 
-    // Conectar ao banco e buscar usuário
-    await connectDB()
-    const user = await User.findById(payload.userId).select('-senha')
+    // Conectar ao banco
+    await connectDB();
 
-    if (!user || !user.ativo) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Usuário não encontrado ou inativo' 
-        },
-        { status: 401 }
-      )
+    // Buscar usuário
+    const usuario = await User.findById(decoded.userId).select(
+      '-senha -refreshToken'
+    );
+
+    if (!usuario) {
+      return { error: 'Usuário não encontrado', status: 404 };
     }
 
-    // Adicionar usuário ao request
-    const authRequest = request as AuthRequest
-    authRequest.user = {
-      ...payload,
-      _id: user._id.toString(),
+    if (!usuario.ativo) {
+      return { error: 'Usuário inativo', status: 403 };
     }
 
-    // Executar handler
-    return await handler(authRequest, user)
-
-  } catch (error) {
-    console.error('❌ Erro no middleware de autenticação:', error)
-    return NextResponse.json(
-      { 
-        success: false,
-        error: 'Erro na autenticação' 
+    // Retornar usuário
+    return {
+      user: {
+        id: usuario._id.toString(),
+        nome: usuario.nome,
+        email: usuario.email,
+        avatar: usuario.avatar,
+        empresa: usuario.empresa,
+        cargo: usuario.cargo,
+        telefone: usuario.telefone,
       },
-      { status: 500 }
-    )
-  }
-}
-
-/**
- * Verificar role do usuário
- */
-export function requireRole(allowedRoles: string[]) {
-  return async (
-    request: NextRequest,
-    handler: (request: AuthRequest, user: any) => Promise<NextResponse>
-  ) => {
-    return withAuth(request, async (req, user) => {
-      if (!allowedRoles.includes(user.role)) {
-        return NextResponse.json(
-          { 
-            success: false,
-            error: 'Permissão negada' 
-          },
-          { status: 403 }
-        )
-      }
-      return handler(req, user)
-    })
+    };
+  } catch (error: any) {
+    console.error('❌ Erro na autenticação:', error);
+    return { error: 'Erro ao verificar autenticação', status: 500 };
   }
 }

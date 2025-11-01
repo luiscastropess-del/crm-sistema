@@ -1,30 +1,29 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { extractTokenFromHeader, blacklistToken } from '@/lib/auth/jwt';
+// app/api/auth/logout/route.ts
+import { NextRequest } from 'next/server';
+import { connectDB } from '@/lib/db/mongodb';
+import User from '@/lib/db/models/User';
+import { verificarAutenticacao } from '@/lib/middleware/auth';
+import { sucesso, erro } from '@/lib/utils/response';
 
 export async function POST(request: NextRequest) {
   try {
-    // Extrair token
-    const authHeader = request.headers.get('Authorization');
-    const token = extractTokenFromHeader(authHeader);
-
-    if (token) {
-      // Adicionar à blacklist
-      blacklistToken(token);
+    // Verificar autenticação
+    const auth = await verificarAutenticacao(request);
+    if (auth.error) {
+      return erro(auth.error, auth.status);
     }
 
-    return NextResponse.json({
-      success: true,
-      message: 'Logout realizado com sucesso',
+    // Conectar ao banco
+    await connectDB();
+
+    // Remover refresh token do usuário
+    await User.findByIdAndUpdate(auth.user.id, {
+      refreshToken: null,
     });
 
-  } catch (error) {
-    console.error('❌ Erro no logout:', error);
-    return NextResponse.json(
-      { 
-        success: false,
-        error: 'Erro ao fazer logout' 
-      },
-      { status: 500 }
-    );
+    return sucesso(null, 'Logout realizado com sucesso');
+  } catch (error: any) {
+    console.error('❌ Erro ao fazer logout:', error);
+    return erro('Erro ao fazer logout', 500);
   }
 }

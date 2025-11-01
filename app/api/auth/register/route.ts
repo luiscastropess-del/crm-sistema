@@ -1,86 +1,69 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { connectDB } from '@/lib/mongodb'
-import User from '@/models/User'
-import { generateTokenPair } from '@/lib/auth/jwt'
+// app/api/auth/register/route.ts
+import { NextRequest } from 'next/server';
+import bcrypt from 'bcryptjs';
+import { connectDB } from '@/lib/db/mongodb'; // ✅ Named import
+import User from '@/lib/db/models/User';
+import { gerarTokens } from '@/lib/auth/jwt';
+import { validar, registroSchema } from '@/lib/utils/validation';
+import { sucesso, erro, erroValidacao } from '@/lib/utils/response';
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { nome, email, senha } = body
+    const body = await request.json();
 
-    // Validação
-    if (!nome || !email || !senha) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Todos os campos são obrigatórios' 
-        },
-        { status: 400 }
-      )
+    const validacao = validar(registroSchema, body);
+    if (!validacao.sucesso) {
+      return erroValidacao(validacao.erros);
     }
 
-    if (senha.length < 6) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Senha deve ter no mínimo 6 caracteres' 
-        },
-        { status: 400 }
-      )
-    }
+    const { nome, email, senha, empresa, cargo, telefone } = validacao.dados;
 
-    // Conectar ao banco
-    await connectDB()
+    await connectDB(); // ✅ Usar sem default
 
-    // Verificar se usuário já existe
-    const usuarioExistente = await User.findOne({ email })
+    const usuarioExistente = await User.findOne({ email });
     if (usuarioExistente) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Email já cadastrado' 
-        },
-        { status: 409 }
-      )
+      return erro('Email já está em uso', 400);
     }
 
-    // Criar usuário
+    const senhaHash = await bcrypt.hash(senha, 10);
+
     const novoUsuario = await User.create({
       nome,
       email,
-      senha,
-      role: 'user',
-    })
+      senha: senhaHash,
+      empresa: empresa || null,
+      cargo: cargo || null,
+      telefone: telefone || null,
+      ativo: true,
+    });
 
-    // Gerar tokens
-    const tokens = generateTokenPair({
-      userId: novoUsuario._id.toString(),
-      email: novoUsuario.email,
-      role: novoUsuario.role,
-    })
+    const { accessToken, refreshToken } = gerarTokens(
+      novoUsuario._id.toString(),
+      novoUsuario.email
+    );
 
-    return NextResponse.json({
-      success: true,
-      message: 'Usuário criado com sucesso',
-      user: {
-        id: novoUsuario._id,
-        nome: novoUsuario.nome,
-        email: novoUsuario.email,
-        role: novoUsuario.role,
+    novoUsuario.refreshToken = refreshToken;
+    await novoUsuario.save();
+
+    return sucesso(
+      {
+        accessToken,
+        refreshToken,
+        usuario: {
+          id: novoUsuario._id.toString(),
+          nome: novoUsuario.nome,
+          email: novoUsuario.email,
+          avatar: novoUsuario.avatar,
+          empresa: novoUsuario.empresa,
+          cargo: novoUsuario.cargo,
+          telefone: novoUsuario.telefone,
+        },
       },
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-    }, { status: 201 })
-
+      'Usuário criado com sucesso',
+      201
+    );
   } catch (error: any) {
-    console.error('❌ Erro no registro:', error)
-    return NextResponse.json(
-      { 
-        success: false,
-        error: 'Erro ao criar usuário',
-        details: error.message 
-      },
-      { status: 500 }
-    )
+    console.error('❌ Erro ao registrar usuário:', error);
+    return erro('Erro ao criar usuário', 500);
   }
 }

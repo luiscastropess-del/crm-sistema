@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db/mongodb';
-import Venda from '@/lib/db/models/Venda'
+import Cliente from '@/lib/db/models/Cliente'
 import { withAuth } from '@/lib/middleware/auth'
 
-// GET - Listar vendas
+// GET - Listar clientes
 export async function GET(request: NextRequest) {
   return withAuth(request, async (req, user) => {
     try {
@@ -13,50 +13,40 @@ export async function GET(request: NextRequest) {
       const page = parseInt(searchParams.get('page') || '1')
       const limit = parseInt(searchParams.get('limit') || '10')
       const status = searchParams.get('status')
-      const clienteId = searchParams.get('clienteId')
+      const search = searchParams.get('search')
 
       // Filtros
-      const filtros: any = {}
+      const filtros: any = { ativo: true }
 
       if (status) {
         filtros.status = status
       }
 
-      if (clienteId) {
-        filtros.cliente = clienteId
+      if (search) {
+        filtros.$or = [
+          { nome: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } },
+          { empresa: { $regex: search, $options: 'i' } },
+        ]
       }
 
-      // Se não for admin, mostrar apenas vendas do usuário
+      // Se não for admin, mostrar apenas clientes do usuário
       if (user.role !== 'admin') {
         filtros.responsavel = user._id
       }
 
-      // Buscar vendas
-      const vendas = await Venda.find(filtros)
-        .populate('cliente', 'nome email empresa')
+      // Buscar clientes
+      const clientes = await Cliente.find(filtros)
         .populate('responsavel', 'nome email')
         .sort({ createdAt: -1 })
         .limit(limit)
         .skip((page - 1) * limit)
 
-      const total = await Venda.countDocuments(filtros)
-
-      // Calcular estatísticas
-      const stats = await Venda.aggregate([
-        { $match: filtros },
-        {
-          $group: {
-            _id: '$status',
-            count: { $sum: 1 },
-            totalValor: { $sum: '$valor' },
-          },
-        },
-      ])
+      const total = await Cliente.countDocuments(filtros)
 
       return NextResponse.json({
         success: true,
-        data: vendas,
-        stats,
+        data: clientes,
         pagination: {
           page,
           limit,
@@ -66,11 +56,11 @@ export async function GET(request: NextRequest) {
       })
 
     } catch (error: any) {
-      console.error('❌ Erro ao buscar vendas:', error)
+      console.error('❌ Erro ao buscar clientes:', error)
       return NextResponse.json(
-        {
+        { 
           success: false,
-          error: 'Erro ao buscar vendas'
+          error: 'Erro ao buscar clientes' 
         },
         { status: 500 }
       )
@@ -78,7 +68,7 @@ export async function GET(request: NextRequest) {
   })
 }
 
-// POST - Criar venda
+// POST - Criar cliente
 export async function POST(request: NextRequest) {
   return withAuth(request, async (req, user) => {
     try {
@@ -87,39 +77,50 @@ export async function POST(request: NextRequest) {
       const body = await request.json()
 
       // Validação
-      if (!body.titulo || !body.cliente || !body.valor) {
+      if (!body.nome || !body.email) {
         return NextResponse.json(
-          {
+          { 
             success: false,
-            error: 'Título, cliente e valor são obrigatórios'
+            error: 'Nome e email são obrigatórios' 
           },
           { status: 400 }
         )
       }
 
-      // Criar venda
-      const novaVenda = await Venda.create({
+      // Verificar se email já existe
+      const clienteExistente = await Cliente.findOne({ email: body.email })
+      if (clienteExistente) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'Email já cadastrado' 
+          },
+          { status: 409 }
+        )
+      }
+
+      // Criar cliente
+      const novoCliente = await Cliente.create({
         ...body,
         responsavel: user._id,
       })
 
-      const vendaPopulada = await Venda.findById(novaVenda._id)
-        .populate('cliente', 'nome email empresa')
+      const clientePopulado = await Cliente.findById(novoCliente._id)
         .populate('responsavel', 'nome email')
 
       return NextResponse.json({
         success: true,
-        message: 'Venda criada com sucesso',
-        data: vendaPopulada,
+        message: 'Cliente criado com sucesso',
+        data: clientePopulado,
       }, { status: 201 })
 
     } catch (error: any) {
-      console.error('❌ Erro ao criar venda:', error)
+      console.error('❌ Erro ao criar cliente:', error)
       return NextResponse.json(
-        {
+        { 
           success: false,
-          error: 'Erro ao criar venda',
-          details: error.message
+          error: 'Erro ao criar cliente',
+          details: error.message 
         },
         { status: 500 }
       )
